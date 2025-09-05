@@ -1,4 +1,5 @@
 # abstract-go
+![GoAbstract-removebg-preview](https://github.com/user-attachments/assets/ea6dc78f-9d59-40a4-9139-c9575bc4c451)
 
 `abstract-go` is a Go SDK for building on [Abstract](https://abs.xyz), an EVM-compatible L2.
 It wraps the standard [go-ethereum](https://github.com/ethereum/go-ethereum) `ethclient`
