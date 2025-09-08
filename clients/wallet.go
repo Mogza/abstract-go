@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -39,8 +40,9 @@ func FromPrivateKey(hexKey string) (*Wallet, error) {
 	}, nil
 }
 
-// SendETH signs and sends ETH to a recipient using EIP-1559
+// SendETH signs and sends ETH to a recipient using EIP-1559 with gas estimation
 func (w *Wallet) SendETH(ctx context.Context, client *Client, to common.Address, amount *big.Int) error {
+	// Get account nonce
 	nonce, err := client.NonceAt(ctx, w.Address)
 	if err != nil {
 		return err
@@ -51,31 +53,49 @@ func (w *Wallet) SendETH(ctx context.Context, client *Client, to common.Address,
 		return err
 	}
 
-	gasFeeCap, err := client.Eth.SuggestGasPrice(ctx)
+	baseFee, err := client.Eth.SuggestGasPrice(ctx)
 	if err != nil {
 		return err
 	}
 
-	tx := types.NewTx(&types.DynamicFeeTx{
-		ChainID:   nil, // set later with signer
-		Nonce:     nonce,
-		GasTipCap: gasTipCap,
-		GasFeeCap: gasFeeCap,
-		Gas:       21000,
-		To:        &to,
-		Value:     amount,
-		Data:      nil,
-	})
+	maxFee := new(big.Int).Add(baseFee, gasTipCap)
 
+	// Estimate gas limit dynamically
+	msg := ethereum.CallMsg{
+		From:  w.Address,
+		To:    &to,
+		Value: amount,
+		Data:  nil,
+	}
+	gasLimit, err := client.Eth.EstimateGas(ctx, msg)
+	if err != nil {
+		return err
+	}
+
+	// Get chain ID
 	chainID, err := client.Eth.NetworkID(ctx)
 	if err != nil {
 		return err
 	}
 
+	// Create EIP-1559 tx
+	tx := types.NewTx(&types.DynamicFeeTx{
+		ChainID:   chainID,
+		Nonce:     nonce,
+		GasTipCap: gasTipCap,
+		GasFeeCap: maxFee, // Using same as tip if base fee not available; can also fetch base fee if RPC supports
+		Gas:       gasLimit,
+		To:        &to,
+		Value:     amount,
+		Data:      nil,
+	})
+
+	// Sign tx
 	signedTx, err := types.SignTx(tx, types.NewLondonSigner(chainID), w.PrivateKey)
 	if err != nil {
 		return err
 	}
 
+	// Send tx
 	return client.SendTransaction(ctx, signedTx)
 }

@@ -13,35 +13,26 @@ import (
 func main() {
 	ctx := context.Background()
 
-	// Connect to Abstract RPC
 	client, err := clients.Dial("https://api.testnet.abs.xyz")
 	if err != nil {
-		log.Fatal("Failed to connect to Abstract RPC:", err)
+		log.Fatal(err)
 	}
 	defer client.Eth.Close()
 
-	// Create a new wallet (or use FromPrivateKey)
-	wallet, err := clients.NewWallet()
+	wallet, err := clients.FromPrivateKey("YOUR_PRIVATE_KEY_HERE")
 	if err != nil {
-		log.Fatal("Failed to create wallet:", err)
+		log.Fatal(err)
 	}
 
-	fmt.Println("Wallet Address:", wallet.Address.Hex())
-
-	// Example recipient (replace with a real one)
-	recipient := common.HexToAddress("0x0000000000000000000000000000000000000000")
-
-	// Amount to send (0.01 ETH)
+	recipient := common.HexToAddress("RECIPIENT_ADDRESS")
 	amount := big.NewInt(0)
-	amount.SetString("10000000000000000", 10) // 0.01 ETH in wei
+	amount.SetString("10000000000000000", 10) // 0.01 ETH
 
 	fmt.Println("Sending 0.01 ETH to:", recipient.Hex())
 
-	// Send ETH
-	err = wallet.SendETH(ctx, client, recipient, amount)
-	if err != nil {
-		log.Fatal("Failed to send ETH:", err)
+	if err := wallet.SendETH(ctx, client, recipient, amount); err != nil {
+		log.Fatal(err)
 	}
 
-	fmt.Println("✅ Transaction sent successfully!")
+	fmt.Println("✅ ETH Transfer sent!")
 }
