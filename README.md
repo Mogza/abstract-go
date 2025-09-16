@@ -91,8 +91,8 @@ fmt.Println("ERC20 Approve Tx Hash:", tx.Hash().Hex())
 ```
 
 5️⃣ Full Example (ETH + ERC20)   
-// Full example combining wallet creation, ETH transfer, and ERC20 transfer    
-// See `examples/global.go` for complete code
+Full example combining wallet creation, ETH transfer, and ERC20 transfer    
+See `examples/global.go` for complete code
 
 
 ## 📂 Project Structure
