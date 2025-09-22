@@ -9,11 +9,13 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 type Client struct {
-	Eth  *ethclient.Client
-	isWS bool
+	Eth       *ethclient.Client
+	RpcClient *rpc.Client
+	isWS      bool
 }
 
 // Dial connects to an Abstract RPC node
@@ -23,9 +25,15 @@ func Dial(url string) (*Client, error) {
 		return nil, err
 	}
 
+	rpcClient, err := rpc.Dial(url)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Client{
-		Eth:  eth,
-		isWS: strings.HasPrefix(url, "ws"),
+		Eth:       eth,
+		RpcClient: rpcClient,
+		isWS:      strings.HasPrefix(url, "ws"),
 	}, nil
 }
 
