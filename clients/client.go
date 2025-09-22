@@ -2,6 +2,7 @@ package clients
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"strings"
 
@@ -18,11 +19,27 @@ type Client struct {
 	isWS      bool
 }
 
-// Dial connects to an Abstract RPC node
-func Dial(url string) (*Client, error) {
+// DialHTTP creates a client for HTTP connections (query & tx)
+func DialHTTP(url string) (*Client, error) {
+	if !strings.HasPrefix(url, "http") {
+		return nil, fmt.Errorf("DialHTTP requires an http:// or https:// URL")
+	}
+
 	eth, err := ethclient.Dial(url)
 	if err != nil {
 		return nil, err
+	}
+
+	return &Client{
+		Eth:  eth,
+		isWS: false,
+	}, nil
+}
+
+// DialWS creates a client for WebSocket connections (subscriptions)
+func DialWS(url string) (*Client, error) {
+	if !strings.HasPrefix(url, "ws") {
+		return nil, fmt.Errorf("DialWS requires a ws:// or wss:// URL")
 	}
 
 	rpcClient, err := rpc.Dial(url)
@@ -31,9 +48,9 @@ func Dial(url string) (*Client, error) {
 	}
 
 	return &Client{
-		Eth:       eth,
+		Eth:       ethclient.NewClient(rpcClient),
 		RpcClient: rpcClient,
-		isWS:      strings.HasPrefix(url, "ws"),
+		isWS:      true,
 	}, nil
 }
 
@@ -44,25 +61,45 @@ func (c *Client) Close() {
 
 // BalanceAt queries the balance of an address
 func (c *Client) BalanceAt(ctx context.Context, addr common.Address) (*big.Int, error) {
+	if c.isWS {
+		return nil, fmt.Errorf("BalanceAt requires an HTTP connection, not WebSocket")
+	}
+
 	return c.Eth.BalanceAt(ctx, addr, nil)
 }
 
 // NonceAt queries the account nonce
 func (c *Client) NonceAt(ctx context.Context, addr common.Address) (uint64, error) {
+	if c.isWS {
+		return -1, fmt.Errorf("NonceAt requires an HTTP connection, not WebSocket")
+	}
+
 	return c.Eth.NonceAt(ctx, addr, nil)
 }
 
 // GasPrice returns current gas price
 func (c *Client) GasPrice(ctx context.Context) (*big.Int, error) {
+	if c.isWS {
+		return nil, fmt.Errorf("GasPrice requires an HTTP connection, not WebSocket")
+	}
+
 	return c.Eth.SuggestGasPrice(ctx)
 }
 
 // CallContract performs a read-only contract call
 func (c *Client) CallContract(ctx context.Context, msg ethereum.CallMsg) ([]byte, error) {
+	if c.isWS {
+		return nil, fmt.Errorf("CallContract requires an HTTP connection, not WebSocket")
+	}
+
 	return c.Eth.CallContract(ctx, msg, nil)
 }
 
 // SendTransaction sends a signed transaction
 func (c *Client) SendTransaction(ctx context.Context, tx *types.Transaction) error {
+	if c.isWS {
+		return fmt.Errorf("SendTransaction requires an HTTP connection, not WebSocket")
+	}
+
 	return c.Eth.SendTransaction(ctx, tx)
 }

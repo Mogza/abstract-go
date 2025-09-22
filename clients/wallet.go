@@ -3,6 +3,7 @@ package clients
 import (
 	"context"
 	"crypto/ecdsa"
+	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum"
@@ -42,6 +43,10 @@ func FromPrivateKey(hexKey string) (*Wallet, error) {
 
 // SendETH signs and sends ETH to a recipient using EIP-1559 with gas estimation
 func (w *Wallet) SendETH(ctx context.Context, client *Client, to common.Address, amount *big.Int) error {
+	if client.isWS {
+		return fmt.Errorf("SendETH requires an HTTP connection, not WebSocket")
+	}
+
 	// Get account nonce
 	nonce, err := client.NonceAt(ctx, w.Address)
 	if err != nil {
