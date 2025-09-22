@@ -3,6 +3,7 @@ package clients
 import (
 	"context"
 	"math/big"
+	"strings"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -11,7 +12,8 @@ import (
 )
 
 type Client struct {
-	Eth *ethclient.Client
+	Eth  *ethclient.Client
+	isWS bool
 }
 
 // Dial connects to an Abstract RPC node
@@ -20,7 +22,16 @@ func Dial(url string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Client{Eth: eth}, nil
+
+	return &Client{
+		Eth:  eth,
+		isWS: strings.HasPrefix(url, "ws"),
+	}, nil
+}
+
+// Close closes websocket connection
+func (c *Client) Close() {
+	c.Eth.Close()
 }
 
 // BalanceAt queries the balance of an address
