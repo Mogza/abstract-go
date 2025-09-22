@@ -2,6 +2,7 @@ package clients
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"strings"
 
@@ -10,6 +11,18 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
+
+type ERC20TransferEvent struct {
+	From  common.Address
+	To    common.Address
+	Value *big.Int
+}
+
+type ERC20ApprovalEvent struct {
+	Owner   common.Address
+	Spender common.Address
+	Value   *big.Int
+}
 
 const erc20ABI = `[{
 	"constant":true,"inputs":[{"name":"_owner","type":"address"}],"name":"balanceOf","outputs":[{"name":"balance","type":"uint256"}],"type":"function"
@@ -28,6 +41,29 @@ const erc20ABI = `[{
 }]`
 
 var parsedERC20ABI, _ = abi.JSON(strings.NewReader(erc20ABI))
+
+func parseTransferLog(vLog types.Log) (*ERC20TransferEvent, error) {
+	event := new(ERC20TransferEvent)
+	err := parsedERC20ABI.UnpackIntoInterface(event, "Transfer", vLog.Data)
+	if err != nil {
+		return nil, err
+	}
+	// Parse indexed fields
+	event.From = common.HexToAddress(vLog.Topics[1].Hex())
+	event.To = common.HexToAddress(vLog.Topics[2].Hex())
+	return event, nil
+}
+
+func parseApprovalLog(vLog types.Log) (*ERC20ApprovalEvent, error) {
+	event := new(ERC20ApprovalEvent)
+	err := parsedERC20ABI.UnpackIntoInterface(event, "Approval", vLog.Data)
+	if err != nil {
+		return nil, err
+	}
+	event.Owner = common.HexToAddress(vLog.Topics[1].Hex())
+	event.Spender = common.HexToAddress(vLog.Topics[2].Hex())
+	return event, nil
+}
 
 // --- Read-only calls ---
 
@@ -181,4 +217,94 @@ func sendERC20Tx(ctx context.Context, wallet *Wallet, client *Client, token comm
 	}
 
 	return signedTx, nil
+}
+
+//  --- Watch Functions ---
+
+func WatchERC20Transfers(client *Client, token common.Address, from, to *common.Address, ch chan<- ERC20TransferEvent) error {
+	if !client.isWS {
+		return fmt.Errorf("WatchERC20Transfers requires a WS client")
+	}
+
+	query := ethereum.FilterQuery{
+		Addresses: []common.Address{token},
+	}
+	if from != nil {
+		query.Topics = append(query.Topics, []common.Hash{common.HexToHash(from.Hex())})
+	}
+	if to != nil {
+		if len(query.Topics) == 0 {
+			query.Topics = append(query.Topics, nil)
+		}
+		query.Topics = append(query.Topics, []common.Hash{common.HexToHash(to.Hex())})
+	}
+
+	logsCh := make(chan types.Log)
+	sub, err := client.SubscribeLogs(context.Background(), query, logsCh)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case err := <-sub.Err():
+				fmt.Println("subscription error:", err)
+				return
+			case vLog := <-logsCh:
+				event, err := parseTransferLog(vLog)
+				if err != nil {
+					continue
+				}
+				ch <- *event
+			}
+		}
+	}()
+
+	return nil
+}
+
+func WatchERC20Approvals(client *Client, token common.Address, owner, spender *common.Address, ch chan<- ERC20ApprovalEvent) error {
+	if !client.isWS {
+		return fmt.Errorf("WatchERC20Approvals requires a WS client")
+	}
+
+	query := ethereum.FilterQuery{
+		Addresses: []common.Address{token},
+	}
+	if owner != nil {
+		query.Topics = append(query.Topics, []common.Hash{common.HexToHash(owner.Hex())})
+	}
+	if spender != nil {
+		if len(query.Topics) == 0 {
+			query.Topics = append(query.Topics, nil)
+		}
+		query.Topics = append(query.Topics, []common.Hash{common.HexToHash(spender.Hex())})
+	}
+
+	logsCh := make(chan types.Log)
+	sub, err := client.SubscribeLogs(context.Background(), query, logsCh)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case err := <-sub.Err():
+				fmt.Println("subscription error:", err)
+				return
+			case vLog := <-logsCh:
+				event, err := parseApprovalLog(vLog)
+				if err != nil {
+					continue
+				}
+				ch <- *event
+			}
+		}
+	}()
+
+	return nil
 }

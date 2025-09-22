@@ -126,6 +126,8 @@ func (m *SubscriptionManager) SubscribeLogs(query ethereum.FilterQuery, handler 
 	return nil
 }
 
+//  --- SubscriptionManager : Helper ---
+
 // SubscribePendingTxs Helper
 func (m *SubscriptionManager) SubscribePendingTxs(handler func(common.Hash)) error {
 	if !m.client.isWS {
