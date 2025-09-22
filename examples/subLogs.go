@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	client, err := clients.Dial("wss://api.testnet.abs.xyz")
+	client, err := clients.DialWS("wss://api.testnet.abs.xyz")
 	if err != nil {
 		log.Fatal(err)
 	}

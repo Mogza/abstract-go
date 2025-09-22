@@ -14,7 +14,7 @@ import (
 func main() {
 	ctx := context.Background()
 
-	client, err := clients.Dial("https://api.testnet.abs.xyz")
+	client, err := clients.DialHTTP("https://api.testnet.abs.xyz")
 	if err != nil {
 		log.Fatal(err)
 	}
