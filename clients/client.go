@@ -71,7 +71,7 @@ func (c *Client) BalanceAt(ctx context.Context, addr common.Address) (*big.Int, 
 // NonceAt queries the account nonce
 func (c *Client) NonceAt(ctx context.Context, addr common.Address) (uint64, error) {
 	if c.isWS {
-		return -1, fmt.Errorf("NonceAt requires an HTTP connection, not WebSocket")
+		return 0, fmt.Errorf("NonceAt requires an HTTP connection, not WebSocket")
 	}
 
 	return c.Eth.NonceAt(ctx, addr, nil)
