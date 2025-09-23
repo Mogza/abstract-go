@@ -16,7 +16,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer client.Eth.Close()
+	defer client.Close()
 
 	address := common.HexToAddress("0x0000000000000000000000000000000000000000")
 	balance, err := client.BalanceAt(ctx, address)
