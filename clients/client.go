@@ -103,3 +103,18 @@ func (c *Client) SendTransaction(ctx context.Context, tx *types.Transaction) err
 
 	return c.Eth.SendTransaction(ctx, tx)
 }
+
+// EstimateGasWithBuffer estimates gas for a CallMsg and applies a buffer percentage.
+// bufferPercent is e.g., 10 for +10%.
+func (c *Client) EstimateGasWithBuffer(ctx context.Context, msg ethereum.CallMsg, bufferPercent uint64) (uint64, error) {
+	gas, err := c.Eth.EstimateGas(ctx, msg)
+	if err != nil {
+		return 0, err
+	}
+
+	// Apply buffer
+	buffer := gas * bufferPercent / 100
+	gasWithBuffer := gas + buffer
+
+	return gasWithBuffer, nil
+}
