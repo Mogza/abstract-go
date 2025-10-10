@@ -21,68 +21,67 @@ type Wallet struct {
 	Address    common.Address
 }
 
-// SendETH signs and sends ETH to a recipient using EIP-1559 with gas estimation
-func (w *Wallet) SendETH(ctx context.Context, client *Client, to common.Address, amount *big.Int) error {
+// BuildAndSendTx signs and sends ETH to a recipient using EIP-1559 with gas estimation
+func (w *Wallet) BuildAndSendTx(ctx context.Context, client *Client, to *common.Address, value *big.Int, data []byte, nm *NonceManager) (*types.Transaction, error) {
 	if client.isWS {
-		return fmt.Errorf("SendETH requires an HTTP connection, not WebSocket")
+		return nil, fmt.Errorf("BuildAndSendTx requires an HTTP connection, not WebSocket")
 	}
 
-	// Get account nonce
-	nonce, err := client.NonceAt(ctx, w.Address)
+	// Get next nonce safely
+	nonce, err := nm.Next(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
+	// Gas suggestion
 	gasTipCap, err := client.Eth.SuggestGasTipCap(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
 	baseFee, err := client.Eth.SuggestGasPrice(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
 	maxFee := new(big.Int).Add(baseFee, gasTipCap)
 
-	// Estimate gas limit dynamically
+	// Estimate gas with optional buffer
 	msg := ethereum.CallMsg{
 		From:  w.Address,
-		To:    &to,
-		Value: amount,
-		Data:  nil,
+		To:    to,
+		Value: value,
+		Data:  data,
 	}
-	gasLimit, err := client.Eth.EstimateGas(ctx, msg)
+	gasLimit, err := client.EstimateGasWithBuffer(ctx, msg, 10) // +10% buffer
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// Get chain ID
 	chainID, err := client.Eth.NetworkID(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// Create EIP-1559 tx
 	tx := types.NewTx(&types.DynamicFeeTx{
 		ChainID:   chainID,
 		Nonce:     nonce,
 		GasTipCap: gasTipCap,
-		GasFeeCap: maxFee, // Using same as tip if base fee not available; can also fetch base fee if RPC supports
+		GasFeeCap: maxFee,
 		Gas:       gasLimit,
-		To:        &to,
-		Value:     amount,
-		Data:      nil,
+		To:        to,
+		Value:     value,
+		Data:      data,
 	})
 
-	// Sign tx
 	signedTx, err := types.SignTx(tx, types.NewLondonSigner(chainID), w.PrivateKey)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// Send tx
-	return client.SendTransaction(ctx, signedTx)
+	if err := client.SendTransaction(ctx, signedTx); err != nil {
+		return nil, err
+	}
+
+	return signedTx, nil
 }
 
 // ExportKeystoreJSON exports the wallet as an encrypted keystore JSON (go-ethereum format).
