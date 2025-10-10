@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/mogza/abstract-go/clients"
@@ -10,17 +11,27 @@ import (
 
 func main() {
 	ctx := context.Background()
-	wsClient, _ := clients.DialWS("wss://api.testnet.abs.xyz/ws")
+	wsClient, err := clients.DialWS("wss://api.testnet.abs.xyz/ws")
+	if err != nil {
+		log.Fatal(err)
+	}
 	defer wsClient.Close()
 
 	nftAddr := common.HexToAddress("NFT_CONTRACT_ADDRESS")
-	nft, _ := clients.NewERC721(wsClient, nftAddr, "")
+	nft, err := clients.NewERC721(wsClient, nftAddr, "")
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	transferCh := make(chan clients.ERC721TransferEvent)
 	approvalCh := make(chan clients.ERC721ApprovalEvent)
 
-	nft.WatchTransfers(ctx, transferCh)
-	nft.WatchApprovals(ctx, approvalCh)
+	if err := nft.WatchTransfers(ctx, transferCh); err != nil {
+		log.Fatal(err)
+	}
+	if err := nft.WatchApprovals(ctx, approvalCh); err != nil {
+		log.Fatal(err)
+	}
 
 	for {
 		select {

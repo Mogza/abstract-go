@@ -19,6 +19,10 @@ const MinimalERC721ABI = `[
 	{"constant":true,"inputs":[{"name":"tokenId","type":"uint256"}],"name":"ownerOf","outputs":[{"name":"","type":"address"}],"type":"function"},
 	{"constant":true,"inputs":[{"name":"tokenId","type":"uint256"}],"name":"tokenURI","outputs":[{"name":"","type":"string"}],"type":"function"},
 	{"constant":false,"inputs":[{"name":"from","type":"address"},{"name":"to","type":"address"},{"name":"tokenId","type":"uint256"}],"name":"transferFrom","outputs":[],"type":"function"},
+	{"constant":false,"inputs":[{"name":"to","type":"address"},{"name":"tokenId","type":"uint256"}],"name":"approve","outputs":[],"type":"function"},
+	{"constant":false,"inputs":[{"name":"operator","type":"address"},{"name":"approved","type":"bool"}],"name":"setApprovalForAll","outputs":[],"type":"function"},
+	{"constant":true,"inputs":[{"name":"tokenId","type":"uint256"}],"name":"getApproved","outputs":[{"name":"","type":"address"}],"type":"function"},
+	{"constant":true,"inputs":[{"name":"owner","type":"address"},{"name":"operator","type":"address"}],"name":"isApprovedForAll","outputs":[{"name":"","type":"bool"}],"type":"function"},
 	{"anonymous":false,"inputs":[{"indexed":true,"name":"from","type":"address"},{"indexed":true,"name":"to","type":"address"},{"indexed":true,"name":"tokenId","type":"uint256"}],"name":"Transfer","type":"event"},
 	{"anonymous":false,"inputs":[{"indexed":true,"name":"owner","type":"address"},{"indexed":true,"name":"approved","type":"address"},{"indexed":true,"name":"tokenId","type":"uint256"}],"name":"Approval","type":"event"}
 ]`
@@ -39,6 +43,12 @@ type ERC721ApprovalEvent struct {
 	Owner    common.Address
 	Approved common.Address
 	TokenID  *big.Int
+}
+
+type ERC721ApprovalForAllEvent struct {
+	Owner    common.Address
+	Operator common.Address
+	Approved bool
 }
 
 // --- Constructor ---
@@ -91,9 +101,41 @@ func (e *ERC721) TokenURI(ctx context.Context, tokenID *big.Int) (string, error)
 	return uri, e.abi.UnpackIntoInterface(&uri, "tokenURI", res)
 }
 
+func (e *ERC721) GetApproved(ctx context.Context, tokenID *big.Int) (common.Address, error) {
+	data, _ := e.abi.Pack("getApproved", tokenID)
+	res, err := e.client.CallContract(ctx, ethereum.CallMsg{To: &e.addr, Data: data})
+	if err != nil {
+		return common.Address{}, err
+	}
+	var approved common.Address
+	return approved, e.abi.UnpackIntoInterface(&approved, "getApproved", res)
+}
+
+func (e *ERC721) IsApprovedForAll(ctx context.Context, owner, operator common.Address) (bool, error) {
+	data, _ := e.abi.Pack("isApprovedForAll", owner, operator)
+	res, err := e.client.CallContract(ctx, ethereum.CallMsg{To: &e.addr, Data: data})
+	if err != nil {
+		return false, err
+	}
+	var approved bool
+	return approved, e.abi.UnpackIntoInterface(&approved, "isApprovedForAll", res)
+}
+
 // --- Write transactions ---
 func (e *ERC721) TransferFrom(ctx context.Context, wallet *Wallet, from, to common.Address, tokenID *big.Int) (*types.Transaction, error) {
 	data, _ := e.abi.Pack("transferFrom", from, to, tokenID)
+	nm := NewNonceManager(e.client, wallet.Address)
+	return wallet.BuildAndSendTx(ctx, e.client, &e.addr, big.NewInt(0), data, nm)
+}
+
+func (e *ERC721) Approve(ctx context.Context, wallet *Wallet, to common.Address, tokenID *big.Int) (*types.Transaction, error) {
+	data, _ := e.abi.Pack("approve", to, tokenID)
+	nm := NewNonceManager(e.client, wallet.Address)
+	return wallet.BuildAndSendTx(ctx, e.client, &e.addr, big.NewInt(0), data, nm)
+}
+
+func (e *ERC721) SetApprovalForAll(ctx context.Context, wallet *Wallet, operator common.Address, approved bool) (*types.Transaction, error) {
+	data, _ := e.abi.Pack("setApprovalForAll", operator, approved)
 	nm := NewNonceManager(e.client, wallet.Address)
 	return wallet.BuildAndSendTx(ctx, e.client, &e.addr, big.NewInt(0), data, nm)
 }
@@ -165,25 +207,77 @@ func (e *ERC721) WatchApprovals(ctx context.Context, ch chan<- ERC721ApprovalEve
 	return nil
 }
 
+func (e *ERC721) WatchApprovalForAll(ctx context.Context, ch chan<- ERC721ApprovalForAllEvent) error {
+	if !e.client.isWS {
+		return fmt.Errorf("WatchApprovalForAll requires a WS client")
+	}
+	sig := crypto.Keccak256Hash([]byte("ApprovalForAll(address,address,bool)"))
+	query := ethereum.FilterQuery{
+		Addresses: []common.Address{e.addr},
+		Topics:    [][]common.Hash{{sig}},
+	}
+	logsCh := make(chan types.Log)
+	sub, err := e.client.SubscribeLogs(ctx, query, logsCh)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case err := <-sub.Err():
+				fmt.Println("subscription error:", err)
+				return
+			case vLog := <-logsCh:
+				event, err := parseERC721ApprovalForAllLog(vLog)
+				if err != nil {
+					continue
+				}
+				ch <- *event
+			}
+		}
+	}()
+	return nil
+}
+
 // --- Log parsers ---
 func parseERC721TransferLog(vLog types.Log) (*ERC721TransferEvent, error) {
-	event := new(ERC721TransferEvent)
 	if len(vLog.Topics) < 4 {
 		return nil, errors.New("invalid transfer log")
 	}
-	event.From = common.HexToAddress(vLog.Topics[1].Hex())
-	event.To = common.HexToAddress(vLog.Topics[2].Hex())
-	event.TokenID = new(big.Int).SetBytes(vLog.Topics[3].Bytes())
-	return event, nil
+	return &ERC721TransferEvent{
+		From:    common.HexToAddress(vLog.Topics[1].Hex()),
+		To:      common.HexToAddress(vLog.Topics[2].Hex()),
+		TokenID: new(big.Int).SetBytes(vLog.Topics[3].Bytes()),
+	}, nil
 }
 
 func parseERC721ApprovalLog(vLog types.Log) (*ERC721ApprovalEvent, error) {
-	event := new(ERC721ApprovalEvent)
 	if len(vLog.Topics) < 4 {
 		return nil, errors.New("invalid approval log")
 	}
-	event.Owner = common.HexToAddress(vLog.Topics[1].Hex())
-	event.Approved = common.HexToAddress(vLog.Topics[2].Hex())
-	event.TokenID = new(big.Int).SetBytes(vLog.Topics[3].Bytes())
-	return event, nil
+	return &ERC721ApprovalEvent{
+		Owner:    common.HexToAddress(vLog.Topics[1].Hex()),
+		Approved: common.HexToAddress(vLog.Topics[2].Hex()),
+		TokenID:  new(big.Int).SetBytes(vLog.Topics[3].Bytes()),
+	}, nil
+}
+
+func parseERC721ApprovalForAllLog(vLog types.Log) (*ERC721ApprovalForAllEvent, error) {
+	if len(vLog.Topics) < 3 {
+		return nil, errors.New("invalid ApprovalForAll log")
+	}
+
+	// The bool value is in Data field (not indexed)
+	approved := false
+	if len(vLog.Data) > 0 && vLog.Data[0] == 1 {
+		approved = true
+	}
+
+	return &ERC721ApprovalForAllEvent{
+		Owner:    common.HexToAddress(vLog.Topics[1].Hex()),
+		Operator: common.HexToAddress(vLog.Topics[2].Hex()),
+		Approved: approved,
+	}, nil
 }

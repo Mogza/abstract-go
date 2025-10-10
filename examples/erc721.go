@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -11,24 +12,46 @@ import (
 
 func main() {
 	ctx := context.Background()
-	client, _ := clients.DialHTTP("https://api.testnet.abs.xyz")
+	client, err := clients.DialHTTP("https://api.testnet.abs.xyz")
+	if err != nil {
+		log.Fatal(err)
+	}
 	defer client.Eth.Close()
 
-	wallet, _ := clients.FromPrivateKey("YOUR_PRIVATE_KEY")
+	wallet, err := clients.FromPrivateKey("YOUR_PRIVATE_KEY")
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	nftAddr := common.HexToAddress("NFT_CONTRACT_ADDRESS")
-	nft, _ := clients.NewERC721(client, nftAddr, "")
+	nft, err := clients.NewERC721(client, nftAddr, "")
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	tokenID := big.NewInt(1)
 
-	balance, _ := nft.BalanceOf(ctx, wallet.Address)
-	owner, _ := nft.OwnerOf(ctx, tokenID)
-	uri, _ := nft.TokenURI(ctx, tokenID)
+	balance, err := nft.BalanceOf(ctx, wallet.Address)
+	if err != nil {
+		log.Fatal(err)
+	}
+	owner, err := nft.OwnerOf(ctx, tokenID)
+	if err != nil {
+		log.Fatal(err)
+	}
+	uri, err := nft.TokenURI(ctx, tokenID)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	fmt.Println("NFT Balance:", balance)
 	fmt.Println("Token Owner:", owner.Hex())
 	fmt.Println("Token URI:", uri)
 
 	recipient := common.HexToAddress("RECIPIENT_ADDRESS")
-	tx, _ := nft.TransferFrom(ctx, wallet, wallet.Address, recipient, tokenID)
+	tx, err := nft.TransferFrom(ctx, wallet, wallet.Address, recipient, tokenID)
+	if err != nil {
+		log.Fatal(err)
+	}
 	fmt.Println("Transfer Tx Hash:", tx.Hash().Hex())
 }
