@@ -21,6 +21,7 @@ const MinimalERC20ABI = `[
 	{"constant":true,"inputs":[{"name":"account","type":"address"}],"name":"balanceOf","outputs":[{"name":"","type":"uint256"}],"type":"function"},
 	{"constant":false,"inputs":[{"name":"recipient","type":"address"},{"name":"amount","type":"uint256"}],"name":"transfer","outputs":[{"name":"","type":"bool"}],"type":"function"},
 	{"constant":false,"inputs":[{"name":"spender","type":"address"},{"name":"amount","type":"uint256"}],"name":"approve","outputs":[{"name":"","type":"bool"}],"type":"function"},
+	{"constant":false,"inputs":[{"name":"from","type":"address"},{"name":"to","type":"address"},{"name":"amount","type":"uint256"}],"name":"transferFrom","outputs":[{"name":"","type":"bool"}],"type":"function"},
 	{"constant":true,"inputs":[{"name":"owner","type":"address"},{"name":"spender","type":"address"}],"name":"allowance","outputs":[{"name":"","type":"uint256"}],"type":"function"},
 	{"anonymous":false,"inputs":[
 		{"indexed":true,"name":"from","type":"address"},
@@ -135,6 +136,12 @@ func (t *ERC20) Decimals(ctx context.Context) (uint8, error) {
 // --- Write transactions ---
 func (t *ERC20) Transfer(ctx context.Context, wallet *Wallet, to common.Address, amount *big.Int) (*types.Transaction, error) {
 	data, _ := t.abi.Pack("transfer", to, amount)
+	nm := NewNonceManager(t.client, wallet.Address)
+	return wallet.BuildAndSendTx(ctx, t.client, &t.addr, big.NewInt(0), data, nm)
+}
+
+func (t *ERC20) TransferFrom(ctx context.Context, wallet *Wallet, from common.Address, to common.Address, amount *big.Int) (*types.Transaction, error) {
+	data, _ := t.abi.Pack("transferFrom", from, to, amount)
 	nm := NewNonceManager(t.client, wallet.Address)
 	return wallet.BuildAndSendTx(ctx, t.client, &t.addr, big.NewInt(0), data, nm)
 }

@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -148,4 +150,75 @@ func (w *Wallet) SignHash(digest []byte) ([]byte, error) {
 // ExportPrivateKeyHex is a convenience wrapper returning the 0x-prefixed hex private key
 func (w *Wallet) ExportPrivateKeyHex() string {
 	return "0x" + w.PrivateKeyHex()
+}
+
+func (w *Wallet) ApproveAndTransferERC20(ctx context.Context, client *Client, token, recipient, spender common.Address, amount *big.Int, nm *NonceManager) (*types.Transaction, *types.Transaction, error) {
+
+	erc20Token, err := NewERC20(client, token, "")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Approve spender
+	approveTx, err := erc20Token.Approve(ctx, w, spender, amount)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Transfer tokens from spender to recipient
+	transferTx, err := erc20Token.TransferFrom(ctx, w, spender, recipient, amount)
+	if err != nil {
+		return approveTx, nil, err
+	}
+
+	return approveTx, transferTx, nil
+}
+
+func (w *Wallet) BatchSendETH(ctx context.Context, client *Client, recipients []common.Address, amounts []*big.Int, nm *NonceManager) ([]*types.Transaction, error) {
+
+	if len(recipients) != len(amounts) {
+		return nil, fmt.Errorf("recipients and amounts length mismatch")
+	}
+
+	var txs []*types.Transaction
+
+	for i, to := range recipients {
+		tx, err := w.BuildAndSendTx(ctx, client, &to, amounts[i], nil, nm)
+		if err != nil {
+			return txs, err
+		}
+		txs = append(txs, tx)
+	}
+
+	return txs, nil
+}
+
+func (w *Wallet) SafeContractCall(ctx context.Context, client *Client, contract common.Address, abiJSON string, method string, nm *NonceManager, params ...interface{}) (*types.Transaction, error) {
+
+	parsedABI, err := abi.JSON(strings.NewReader(abiJSON))
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := parsedABI.Pack(method, params...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Optional: simulate call first
+	msg := ethereum.CallMsg{
+		From: w.Address,
+		To:   &contract,
+		Data: data,
+	}
+	if _, err := client.CallContract(ctx, msg); err != nil {
+		return nil, fmt.Errorf("simulation failed: %w", err)
+	}
+
+	tx, err := w.BuildAndSendTx(ctx, client, &contract, big.NewInt(0), data, nm)
+	if err != nil {
+		return nil, err
+	}
+
+	return tx, nil
 }
