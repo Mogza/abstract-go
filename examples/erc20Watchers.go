@@ -1,41 +1,28 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"log"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/mogza/abstract-go/clients"
 )
 
 func main() {
-	// Connect to node via WebSocket
-	wsClient, err := clients.DialWS("wss://api.testnet.abs.xyz/ws")
-	if err != nil {
-		log.Fatal(err)
-	}
+	ctx := context.Background()
+
+	wsClient, _ := clients.DialWS("wss://api.testnet.abs.xyz/ws")
 	defer wsClient.Close()
 
-	// Token address to watch
-	token := common.HexToAddress("0xYourERC20Token")
+	token := common.HexToAddress("ERC20_TOKEN_ADDRESS")
+	erc20, _ := clients.NewERC20(wsClient, token, "")
 
-	// Channels to receive events
 	transferCh := make(chan clients.ERC20TransferEvent)
 	approvalCh := make(chan clients.ERC20ApprovalEvent)
 
-	// Start watching Transfer events
-	err = clients.WatchERC20Transfers(wsClient, token, nil, nil, transferCh)
-	if err != nil {
-		log.Fatal(err)
-	}
+	erc20.WatchTransfers(ctx, nil, nil, transferCh)
+	erc20.WatchApprovals(ctx, nil, nil, approvalCh)
 
-	// Start watching Approval events
-	err = clients.WatchERC20Approvals(wsClient, token, nil, nil, approvalCh)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Listen and print events
 	for {
 		select {
 		case t := <-transferCh:
