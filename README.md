@@ -5,8 +5,19 @@
 It wraps the standard [go-ethereum](https://github.com/ethereum/go-ethereum) `ethclient`
 and provides Abstract-first naming, helpers, and examples.
 
-## ✨ Features (v0.3)
+## ✨ Features (v0.4)   
+### Wallet & Keys
+- Import/export wallets (private key, mnemonic, keystore JSON)
+- Message signing: EIP-191, EIP-712 typed data
+- Signature recovery & verification
+- Deterministic HD wallets for testing/dev
 
+### Transactions Utilities   
+- Robust, thread-safe nonce manager
+- Gas estimation helpers (+ buffers, ERC20 & contract calls)
+- Auto-fill transaction builder (BuildAndSendTx) with sane defaults
+
+### "v0.3 and before" Features
 - Connect to an Abstract RPC node
 - Query ETH balances, nonces, gas prices
 - Call contracts & send ETH transactions
@@ -26,50 +37,38 @@ go get github.com/mogza/abstract-go
 
 ## 🛠 Usage   
 
-1️⃣ Create a Wallet
+1️⃣ Create/Import a Wallet
 ```go
-package main
+wallet, _ := clients.NewWallet()
+wallet2, _ := clients.FromPrivateKey("HEX_KEY")
+wallet3, _ := clients.NewWalletFromMnemonic("mnemonic words ...", "")
+keyJSON, _ := wallet.ExportKeystoreJSON("password")
+wallet4, _ := clients.ImportKeystoreJSON(keyJSON, "password")
 
-import (
-    "fmt"
-    "log"
-
-    "github.com/mogza/abstract-go/clients"
-)
-
-func main() {
-    wallet, err := clients.NewWallet()
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    fmt.Println("Wallet Address:", wallet.Address.Hex())
-    fmt.Println("Private Key:", wallet.PrivateKey.D.Text(16)) // Keep secret!
-}
 ```
 
-2️⃣ Connect and Query ETH Balance
+2️⃣ Sign & Verify Messages
 ```go
-ctx := context.Background()
-client, _ := clients.DialHTTP("https://api.testnet.abs.xyz")
-defer client.Close()
+message := []byte("Hello Abstract!")
+sig, _ := wallet.SignMessageEIP191(message)
+valid, _ := clients.VerifySignature(clients.PrefixedHash(message), sig, wallet.Address)
+fmt.Println("Valid signature?", valid)
 
-address := common.HexToAddress("0x0000000000000000000000000000000000000000")
-balance, _ := client.BalanceAt(ctx, address)
-fmt.Println("ETH Balance:", balance.String())
+// EIP-712 typed data
+typedHash := clients.HashTypedData(myTypedData)
+sig2, _ := wallet.SignHash(typedHash)
+addr2, _ := clients.RecoverAddressFromSignature(typedHash, sig2)
+fmt.Println("Typed data signer:", addr2.Hex())
 ```
 
 3️⃣ Send ETH
 ```go
-recipient := common.HexToAddress("0xRecipientAddress")
-amount := big.NewInt(0).SetString("10000000000000000", 10) // 0.01 ETH
+recipient := common.HexToAddress("0xRecipient")
+amount := big.NewInt(10000000000000000) // 0.01 ETH
+nm := clients.NewNonceManager(client, wallet.Address)
 
-err := wallet.SendETH(ctx, client, recipient, amount)
-if err != nil {
-    log.Fatal(err)
-}
-
-fmt.Println("✅ ETH sent!")
+tx, err := wallet.BuildAndSendTx(ctx, client, &recipient, amount, nil, nm)
+fmt.Println("Transaction Hash:", tx.Hash().Hex())
 ```
 
 4️⃣ ERC20 Helpers
@@ -122,8 +121,10 @@ See other examples in `examples/`.
 ├── clients
 │   ├── client.go
 │   ├── erc20.go
+│   ├── nonce.go
 │   ├── subscription.go
-│   └── wallet.go
+│   ├── wallet.go
+│   └── wallet_utils.go
 ├── examples
 │   ├── client.go
 │   ├── erc20.go
@@ -134,7 +135,12 @@ See other examples in `examples/`.
 │   ├── subNewHeads.go
 │   ├── subPendingTxs.go
 │   ├── transfer.go
-│   └── wallet.go
+│   ├── wallet_deterministic.go
+│   ├── wallet.go
+│   ├── wallet_keystore.go
+│   ├── wallet_mnemonic.go
+│   ├── wallet_sign.go
+│   └── wallet_verify.go
 ├── go.mod
 ├── go.sum
 ├── LICENSE
@@ -142,16 +148,20 @@ See other examples in `examples/`.
 
 ```
 
-## 🔮 Roadmap    
-v0.4:  
-- Wallet management (Export private key, Sign arbitrary messages (EIP-191), Sign typed data (EIP-712))    
-- Transaction utils (Gas estimation handler, Nonce manager)
-     
-Upcoming:  
-- ERC721 (NFT) Support  
-- Unified Event Watching  
-- Transaction Builders  
-- Tooling (CLI, ...)  
+## 🔮 Roadmap   
+Upcoming :    
+ERC721 (NFT) Support
+- ownerOf, tokenURI, transferFrom.
+- WatchERC721Transfers.
 
+Unified Event Watching
+- A generic WatchContractEvent helper.
+- Developers can pass any ABI + event name.
+
+Retry & Resilience
+- Polling with retry/backoff if RPC fails.
+- Detect reorgs (replay logs if chain reverts).
+
+  
 ## 🤝 Contributing    
 PRs and issues are welcome! This SDK is community-driven to help Abstract adoption and provide a Go-first developer experience.    
