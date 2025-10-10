@@ -19,10 +19,11 @@ func main() {
 	}
 	defer client.Eth.Close()
 
-	wallet, err := clients.FromPrivateKey("YOUR_PRIVATE_KEY_HERE")
+	wallet, err := clients.FromPrivateKey("YOUR_WALLET_PRIVATE_KEY")
 	if err != nil {
 		log.Fatal(err)
 	}
+	nm := clients.NewNonceManager(client, wallet.Address)
 
 	recipient := common.HexToAddress("RECIPIENT_ADDRESS")
 	amount := big.NewInt(0)
@@ -30,9 +31,10 @@ func main() {
 
 	fmt.Println("Sending 0.01 ETH to:", recipient.Hex())
 
-	if err := wallet.SendETH(ctx, client, recipient, amount); err != nil {
+	tx, err := wallet.BuildAndSendTx(ctx, client, &recipient, amount, nil, nm)
+	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println("✅ ETH Transfer sent!")
+	fmt.Println("✅ ETH Transfer sent! Tx hash:", tx.Hash().Hex())
 }
