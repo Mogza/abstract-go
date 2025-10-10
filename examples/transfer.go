@@ -17,7 +17,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer client.Eth.Close()
+	defer client.Close()
 
 	wallet, err := clients.FromPrivateKey("YOUR_WALLET_PRIVATE_KEY")
 	if err != nil {
