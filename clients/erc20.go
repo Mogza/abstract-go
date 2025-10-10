@@ -2,6 +2,7 @@ package clients
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -10,21 +11,10 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
-type ERC20TransferEvent struct {
-	From  common.Address
-	To    common.Address
-	Value *big.Int
-}
-
-type ERC20ApprovalEvent struct {
-	Owner   common.Address
-	Spender common.Address
-	Value   *big.Int
-}
-
-const erc20ABI = `[{
+const MinimalERC20ABI = `[{
 	"constant":true,"inputs":[{"name":"_owner","type":"address"}],"name":"balanceOf","outputs":[{"name":"balance","type":"uint256"}],"type":"function"
 },{
 	"constant":false,"inputs":[{"name":"_to","type":"address"},{"name":"_value","type":"uint256"}],"name":"transfer","outputs":[{"name":"","type":"bool"}],"type":"function"
@@ -40,207 +30,141 @@ const erc20ABI = `[{
 	"constant":true,"inputs":[],"name":"decimals","outputs":[{"name":"","type":"uint8"}],"type":"function"
 }]`
 
-var parsedERC20ABI, _ = abi.JSON(strings.NewReader(erc20ABI))
-
-func parseTransferLog(vLog types.Log) (*ERC20TransferEvent, error) {
-	event := new(ERC20TransferEvent)
-	err := parsedERC20ABI.UnpackIntoInterface(event, "Transfer", vLog.Data)
-	if err != nil {
-		return nil, err
-	}
-	// Parse indexed fields
-	event.From = common.HexToAddress(vLog.Topics[1].Hex())
-	event.To = common.HexToAddress(vLog.Topics[2].Hex())
-	return event, nil
+type ERC20 struct {
+	client *Client
+	addr   common.Address
+	abi    abi.ABI
 }
 
-func parseApprovalLog(vLog types.Log) (*ERC20ApprovalEvent, error) {
-	event := new(ERC20ApprovalEvent)
-	err := parsedERC20ABI.UnpackIntoInterface(event, "Approval", vLog.Data)
+type ERC20TransferEvent struct {
+	From  common.Address
+	To    common.Address
+	Value *big.Int
+}
+
+type ERC20ApprovalEvent struct {
+	Owner   common.Address
+	Spender common.Address
+	Value   *big.Int
+}
+
+// --- Constructor ---
+func NewERC20(client *Client, token common.Address, abiJSON string) (*ERC20, error) {
+	if client == nil {
+		return nil, errors.New("client is nil")
+	}
+	if abiJSON == "" {
+		abiJSON = MinimalERC20ABI
+	}
+	parsedABI, err := abi.JSON(strings.NewReader(abiJSON))
 	if err != nil {
 		return nil, err
 	}
-	event.Owner = common.HexToAddress(vLog.Topics[1].Hex())
-	event.Spender = common.HexToAddress(vLog.Topics[2].Hex())
-	return event, nil
+	return &ERC20{
+		client: client,
+		addr:   token,
+		abi:    parsedABI,
+	}, nil
 }
 
 // --- Read-only calls ---
-
-func ERC20BalanceOf(ctx context.Context, client *Client, token common.Address, owner common.Address) (*big.Int, error) {
-	data, err := parsedERC20ABI.Pack("balanceOf", owner)
+func (t *ERC20) BalanceOf(ctx context.Context, owner common.Address) (*big.Int, error) {
+	data, _ := t.abi.Pack("balanceOf", owner)
+	msg := ethereum.CallMsg{To: &t.addr, Data: data}
+	res, err := t.client.CallContract(ctx, msg)
 	if err != nil {
 		return nil, err
 	}
-	result, err := client.Eth.CallContract(ctx, ethereum.CallMsg{To: &token, Data: data}, nil)
-	if err != nil {
-		return nil, err
-	}
-	values, err := parsedERC20ABI.Unpack("balanceOf", result)
-	if err != nil {
-		return nil, err
-	}
-	return values[0].(*big.Int), nil
+	balance := new(big.Int)
+	err = t.abi.UnpackIntoInterface(&balance, "balanceOf", res)
+	return balance, err
 }
 
-func ERC20Allowance(ctx context.Context, client *Client, token common.Address, owner, spender common.Address) (*big.Int, error) {
-	data, err := parsedERC20ABI.Pack("allowance", owner, spender)
+func (t *ERC20) Allowance(ctx context.Context, owner, spender common.Address) (*big.Int, error) {
+	data, _ := t.abi.Pack("allowance", owner, spender)
+	msg := ethereum.CallMsg{To: &t.addr, Data: data}
+	res, err := t.client.CallContract(ctx, msg)
 	if err != nil {
 		return nil, err
 	}
-	result, err := client.Eth.CallContract(ctx, ethereum.CallMsg{To: &token, Data: data}, nil)
-	if err != nil {
-		return nil, err
-	}
-	values, err := parsedERC20ABI.Unpack("allowance", result)
-	if err != nil {
-		return nil, err
-	}
-	return values[0].(*big.Int), nil
+	allowance := new(big.Int)
+	err = t.abi.UnpackIntoInterface(&allowance, "allowance", res)
+	return allowance, err
 }
 
-func ERC20Name(ctx context.Context, client *Client, token common.Address) (string, error) {
-	data, err := parsedERC20ABI.Pack("name")
+func (t *ERC20) Name(ctx context.Context) (string, error) {
+	data, _ := t.abi.Pack("name")
+	msg := ethereum.CallMsg{To: &t.addr, Data: data}
+	res, err := t.client.CallContract(ctx, msg)
 	if err != nil {
 		return "", err
 	}
-	result, err := client.Eth.CallContract(ctx, ethereum.CallMsg{To: &token, Data: data}, nil)
-	if err != nil {
-		return "", err
-	}
-	values, err := parsedERC20ABI.Unpack("name", result)
-	if err != nil {
-		return "", err
-	}
-	return values[0].(string), nil
+	var name string
+	err = t.abi.UnpackIntoInterface(&name, "name", res)
+	return name, err
 }
 
-func ERC20Symbol(ctx context.Context, client *Client, token common.Address) (string, error) {
-	data, err := parsedERC20ABI.Pack("symbol")
+func (t *ERC20) Symbol(ctx context.Context) (string, error) {
+	data, _ := t.abi.Pack("symbol")
+	msg := ethereum.CallMsg{To: &t.addr, Data: data}
+	res, err := t.client.CallContract(ctx, msg)
 	if err != nil {
 		return "", err
 	}
-	result, err := client.Eth.CallContract(ctx, ethereum.CallMsg{To: &token, Data: data}, nil)
-	if err != nil {
-		return "", err
-	}
-	values, err := parsedERC20ABI.Unpack("symbol", result)
-	if err != nil {
-		return "", err
-	}
-	return values[0].(string), nil
+	var symbol string
+	err = t.abi.UnpackIntoInterface(&symbol, "symbol", res)
+	return symbol, err
 }
 
-func ERC20Decimals(ctx context.Context, client *Client, token common.Address) (uint8, error) {
-	data, err := parsedERC20ABI.Pack("decimals")
+func (t *ERC20) Decimals(ctx context.Context) (uint8, error) {
+	data, _ := t.abi.Pack("decimals")
+	msg := ethereum.CallMsg{To: &t.addr, Data: data}
+	res, err := t.client.CallContract(ctx, msg)
 	if err != nil {
 		return 0, err
 	}
-	result, err := client.Eth.CallContract(ctx, ethereum.CallMsg{To: &token, Data: data}, nil)
-	if err != nil {
-		return 0, err
-	}
-	values, err := parsedERC20ABI.Unpack("decimals", result)
-	if err != nil {
-		return 0, err
-	}
-	return values[0].(uint8), nil
+	var decimals uint8
+	err = t.abi.UnpackIntoInterface(&decimals, "decimals", res)
+	return decimals, err
 }
 
-// --- Write transactions (signed) ---
-
-func ERC20Transfer(ctx context.Context, wallet *Wallet, client *Client, token, to common.Address, amount *big.Int) (*types.Transaction, error) {
-	data, err := parsedERC20ABI.Pack("transfer", to, amount)
-	if err != nil {
-		return nil, err
-	}
-	return sendERC20Tx(ctx, wallet, client, token, data)
+// --- Write transactions ---
+func (t *ERC20) Transfer(ctx context.Context, wallet *Wallet, to common.Address, amount *big.Int) (*types.Transaction, error) {
+	data, _ := t.abi.Pack("transfer", to, amount)
+	nm := NewNonceManager(t.client, wallet.Address)
+	return wallet.BuildAndSendTx(ctx, t.client, &t.addr, big.NewInt(0), data, nm)
 }
 
-func ERC20Approve(ctx context.Context, wallet *Wallet, client *Client, token, spender common.Address, amount *big.Int) (*types.Transaction, error) {
-	data, err := parsedERC20ABI.Pack("approve", spender, amount)
-	if err != nil {
-		return nil, err
-	}
-	return sendERC20Tx(ctx, wallet, client, token, data)
+func (t *ERC20) Approve(ctx context.Context, wallet *Wallet, spender common.Address, amount *big.Int) (*types.Transaction, error) {
+	data, _ := t.abi.Pack("approve", spender, amount)
+	nm := NewNonceManager(t.client, wallet.Address)
+	return wallet.BuildAndSendTx(ctx, t.client, &t.addr, big.NewInt(0), data, nm)
 }
 
-// --- Internal helper for sending signed ERC20 tx ---
-func sendERC20Tx(ctx context.Context, wallet *Wallet, client *Client, token common.Address, data []byte) (*types.Transaction, error) {
-	nonce, err := client.NonceAt(ctx, wallet.Address)
-	if err != nil {
-		return nil, err
+// --- Watchers ---
+func (t *ERC20) WatchTransfers(ctx context.Context, from, to *common.Address, ch chan<- ERC20TransferEvent) error {
+	if !t.client.isWS {
+		return fmt.Errorf("WatchTransfers requires a WS client")
 	}
 
-	gasTipCap, err := client.Eth.SuggestGasTipCap(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	gasFeeCap, err := client.Eth.SuggestGasPrice(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	msg := ethereum.CallMsg{
-		From: wallet.Address,
-		To:   &token,
-		Data: data,
-	}
-	gasLimit, err := client.Eth.EstimateGas(ctx, msg)
-	if err != nil {
-		return nil, err
-	}
-
-	tx := types.NewTx(&types.DynamicFeeTx{
-		Nonce:     nonce,
-		To:        &token,
-		Gas:       gasLimit,
-		GasFeeCap: gasFeeCap,
-		GasTipCap: gasTipCap,
-		Value:     big.NewInt(0), // ERC20 transfers use data, not ETH
-		Data:      data,
-	})
-
-	chainID, err := client.Eth.NetworkID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	signedTx, err := types.SignTx(tx, types.NewLondonSigner(chainID), wallet.PrivateKey)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := client.SendTransaction(ctx, signedTx); err != nil {
-		return nil, err
-	}
-
-	return signedTx, nil
-}
-
-//  --- Watch Functions ---
-
-func WatchERC20Transfers(client *Client, token common.Address, from, to *common.Address, ch chan<- ERC20TransferEvent) error {
-	if !client.isWS {
-		return fmt.Errorf("WatchERC20Transfers requires a WS client")
-	}
+	transferSig := crypto.Keccak256Hash([]byte("Transfer(address,address,uint256)"))
 
 	query := ethereum.FilterQuery{
-		Addresses: []common.Address{token},
+		Addresses: []common.Address{t.addr},
+		Topics:    [][]common.Hash{{transferSig}},
 	}
 	if from != nil {
 		query.Topics = append(query.Topics, []common.Hash{common.HexToHash(from.Hex())})
 	}
 	if to != nil {
-		if len(query.Topics) == 0 {
+		if len(query.Topics) < 2 {
 			query.Topics = append(query.Topics, nil)
 		}
 		query.Topics = append(query.Topics, []common.Hash{common.HexToHash(to.Hex())})
 	}
 
 	logsCh := make(chan types.Log)
-	sub, err := client.SubscribeLogs(context.Background(), query, logsCh)
+	sub, err := t.client.SubscribeLogs(ctx, query, logsCh)
 	if err != nil {
 		return err
 	}
@@ -253,7 +177,7 @@ func WatchERC20Transfers(client *Client, token common.Address, from, to *common.
 				fmt.Println("subscription error:", err)
 				return
 			case vLog := <-logsCh:
-				event, err := parseTransferLog(vLog)
+				event, err := t.parseTransferLog(vLog)
 				if err != nil {
 					continue
 				}
@@ -261,30 +185,32 @@ func WatchERC20Transfers(client *Client, token common.Address, from, to *common.
 			}
 		}
 	}()
-
 	return nil
 }
 
-func WatchERC20Approvals(client *Client, token common.Address, owner, spender *common.Address, ch chan<- ERC20ApprovalEvent) error {
-	if !client.isWS {
-		return fmt.Errorf("WatchERC20Approvals requires a WS client")
+func (t *ERC20) WatchApprovals(ctx context.Context, owner, spender *common.Address, ch chan<- ERC20ApprovalEvent) error {
+	if !t.client.isWS {
+		return fmt.Errorf("WatchApprovals requires a WS client")
 	}
 
+	approvalSig := crypto.Keccak256Hash([]byte("Approval(address,address,uint256)"))
+
 	query := ethereum.FilterQuery{
-		Addresses: []common.Address{token},
+		Addresses: []common.Address{t.addr},
+		Topics:    [][]common.Hash{{approvalSig}},
 	}
 	if owner != nil {
 		query.Topics = append(query.Topics, []common.Hash{common.HexToHash(owner.Hex())})
 	}
 	if spender != nil {
-		if len(query.Topics) == 0 {
+		if len(query.Topics) < 2 {
 			query.Topics = append(query.Topics, nil)
 		}
 		query.Topics = append(query.Topics, []common.Hash{common.HexToHash(spender.Hex())})
 	}
 
 	logsCh := make(chan types.Log)
-	sub, err := client.SubscribeLogs(context.Background(), query, logsCh)
+	sub, err := t.client.SubscribeLogs(ctx, query, logsCh)
 	if err != nil {
 		return err
 	}
@@ -297,7 +223,7 @@ func WatchERC20Approvals(client *Client, token common.Address, owner, spender *c
 				fmt.Println("subscription error:", err)
 				return
 			case vLog := <-logsCh:
-				event, err := parseApprovalLog(vLog)
+				event, err := t.parseApprovalLog(vLog)
 				if err != nil {
 					continue
 				}
@@ -305,6 +231,44 @@ func WatchERC20Approvals(client *Client, token common.Address, owner, spender *c
 			}
 		}
 	}()
-
 	return nil
+}
+
+// --- Log parsers ---//
+func (t *ERC20) parseTransferLog(vLog types.Log) (*ERC20TransferEvent, error) {
+	if len(vLog.Topics) < 3 {
+		return nil, fmt.Errorf("invalid ERC20 Transfer log")
+	}
+	event := &ERC20TransferEvent{
+		From:  common.HexToAddress(vLog.Topics[1].Hex()),
+		To:    common.HexToAddress(vLog.Topics[2].Hex()),
+		Value: new(big.Int),
+	}
+
+	// Use the instance ABI
+	err := t.abi.UnpackIntoInterface(event, "Transfer", vLog.Data)
+	if err != nil {
+		return nil, err
+	}
+
+	return event, nil
+}
+
+func (t *ERC20) parseApprovalLog(vLog types.Log) (*ERC20ApprovalEvent, error) {
+	if len(vLog.Topics) < 3 {
+		return nil, fmt.Errorf("invalid ERC20 Approval log")
+	}
+	event := &ERC20ApprovalEvent{
+		Owner:   common.HexToAddress(vLog.Topics[1].Hex()),
+		Spender: common.HexToAddress(vLog.Topics[2].Hex()),
+		Value:   new(big.Int),
+	}
+
+	// Use the instance ABI
+	err := t.abi.UnpackIntoInterface(event, "Approval", vLog.Data)
+	if err != nil {
+		return nil, err
+	}
+
+	return event, nil
 }
