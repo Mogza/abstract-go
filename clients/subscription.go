@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 
 	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/event"
@@ -56,6 +58,78 @@ func (c *Client) SubscribePendingTxs(ctx context.Context, ch chan<- common.Hash)
 		return nil, fmt.Errorf("SubscribePendingTxs requires a WebSocket connection")
 	}
 	return c.RpcClient.EthSubscribe(ctx, ch, "newPendingTransactions")
+}
+
+// --- Unified Event Watching ---
+
+type EventHandler func(vLog types.Log) error
+
+// WatchContractEvent watches any event on a contract with optional indexed filters
+func (c *Client) WatchContractEvent(ctx context.Context, contractAddr common.Address, abiJSON string, eventName string, filter map[string][]common.Address, handler EventHandler) error {
+	if !c.isWS {
+		return fmt.Errorf("WatchContractEvent requires a WS client")
+	}
+
+	parsedABI, err := abi.JSON(strings.NewReader(abiJSON))
+	if err != nil {
+		return err
+	}
+
+	retEvent, exists := parsedABI.Events[eventName]
+	if !exists {
+		return fmt.Errorf("event %s not found in ABI", eventName)
+	}
+
+	topics := [][]common.Hash{{retEvent.ID}}
+
+	// Apply indexed filters if provided
+	for i, input := range retEvent.Inputs {
+		if !input.Indexed {
+			continue
+		}
+		key := input.Name
+		if addrs, ok := filter[key]; ok && len(addrs) > 0 {
+			topicHashes := make([]common.Hash, len(addrs))
+			for j, addr := range addrs {
+				topicHashes[j] = common.HexToHash(addr.Hex())
+			}
+			// fill empty topics until this index
+			for len(topics) <= i {
+				topics = append(topics, nil)
+			}
+			topics[i] = topicHashes
+		}
+	}
+
+	query := ethereum.FilterQuery{
+		Addresses: []common.Address{contractAddr},
+		Topics:    topics,
+	}
+
+	logsCh := make(chan types.Log)
+	sub, err := c.SubscribeLogs(ctx, query, logsCh)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case err := <-sub.Err():
+				fmt.Println("subscription error:", err)
+				return
+			case vLog := <-logsCh:
+				if err := handler(vLog); err != nil {
+					fmt.Println("handler error:", err)
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	return nil
 }
 
 // SubscribeNewHeads helper
