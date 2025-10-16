@@ -15,7 +15,8 @@ type NonceManager struct {
 	init   bool
 }
 
-// NewNonceManager creates a nonce manager for a wallet
+// NewNonceManager creates a NonceManager for safely tracking and incrementing nonces.
+// Associates the manager with a specific client and address.
 func NewNonceManager(client *Client, addr common.Address) *NonceManager {
 	return &NonceManager{
 		client: client,
@@ -23,7 +24,8 @@ func NewNonceManager(client *Client, addr common.Address) *NonceManager {
 	}
 }
 
-// Next returns the next nonce safely
+// Next returns the next available nonce for the address, safely incrementing it.
+// Initializes from the blockchain if not already synced.
 func (nm *NonceManager) Next(ctx context.Context) (uint64, error) {
 	nm.mu.Lock()
 	defer nm.mu.Unlock()
@@ -42,7 +44,8 @@ func (nm *NonceManager) Next(ctx context.Context) (uint64, error) {
 	return nonce, nil
 }
 
-// Reset allows forcing sync with blockchain (if needed)
+// Reset forces the NonceManager to resync the nonce from the blockchain on next use.
+// Useful if a transaction is dropped or nonce is out of sync.
 func (nm *NonceManager) Reset() {
 	nm.mu.Lock()
 	defer nm.mu.Unlock()

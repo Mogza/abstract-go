@@ -23,7 +23,8 @@ type Wallet struct {
 	Address    common.Address
 }
 
-// BuildAndSendTx signs and sends ETH to a recipient using EIP-1559 with gas estimation
+// BuildAndSendTx creates, signs, and sends an EIP-1559 ETH transaction.
+// It estimates gas, sets fees, and uses the provided NonceManager.
 func (w *Wallet) BuildAndSendTx(ctx context.Context, client *Client, to *common.Address, value *big.Int, data []byte, nm *NonceManager) (*types.Transaction, error) {
 	if client.isWS {
 		return nil, fmt.Errorf("BuildAndSendTx requires an HTTP connection, not WebSocket")
@@ -86,8 +87,8 @@ func (w *Wallet) BuildAndSendTx(ctx context.Context, client *Client, to *common.
 	return signedTx, nil
 }
 
-// ExportKeystoreJSON exports the wallet as an encrypted keystore JSON (go-ethereum format).
-// Use a strong password. Returns the JSON bytes.
+// ExportKeystoreJSON exports the wallet as an encrypted keystore JSON.
+// The output is compatible with go-ethereum and requires a password.
 func (w *Wallet) ExportKeystoreJSON(password string) ([]byte, error) {
 	if w == nil || w.PrivateKey == nil {
 		return nil, errors.New("wallet or private key nil")
@@ -106,8 +107,8 @@ func (w *Wallet) ExportKeystoreJSON(password string) ([]byte, error) {
 	return keyjson, nil
 }
 
-// SignMessageEIP191 signs a human-readable message with the `\x19Ethereum Signed Message:\n<len>` prefix.
-// Returns the 65-byte [R|S|V] signature (where V is 27/28 converted to 0/1 for go-ethereum compat).
+// SignMessageEIP191 signs a message with the EIP-191 Ethereum prefix.
+// Returns a 65-byte signature with the correct V value for Ethereum.
 func (w *Wallet) SignMessageEIP191(message []byte) ([]byte, error) {
 	if w == nil || w.PrivateKey == nil {
 		return nil, errors.New("wallet or private key nil")
@@ -126,8 +127,8 @@ func (w *Wallet) SignMessageEIP191(message []byte) ([]byte, error) {
 	return sig, nil
 }
 
-// SignHash signs a 32-byte digest using the account private key (generic).
-// Use this for signing EIP-712 hashes (you provide the typed data hash).
+// SignHash signs a 32-byte digest using the wallet's private key.
+// Use for EIP-712 or other pre-hashed data; returns a 65-byte signature
 func (w *Wallet) SignHash(digest []byte) ([]byte, error) {
 	if w == nil || w.PrivateKey == nil {
 		return nil, errors.New("wallet or private key nil")
@@ -147,11 +148,14 @@ func (w *Wallet) SignHash(digest []byte) ([]byte, error) {
 	return sig, nil
 }
 
-// ExportPrivateKeyHex is a convenience wrapper returning the 0x-prefixed hex private key
+// ExportPrivateKeyHex returns the private key as a 0x-prefixed hex string.
+// Useful for exporting or debugging the wallet's private key.
 func (w *Wallet) ExportPrivateKeyHex() string {
 	return "0x" + w.PrivateKeyHex()
 }
 
+// ApproveAndTransferERC20 approves a spender and then transfers ERC20 tokens.
+// Returns both the approve and transfer transactions, or an error.
 func (w *Wallet) ApproveAndTransferERC20(ctx context.Context, client *Client, token, recipient, spender common.Address, amount *big.Int, nm *NonceManager) (*types.Transaction, *types.Transaction, error) {
 
 	erc20Token, err := NewERC20(client, token, "")
@@ -174,6 +178,8 @@ func (w *Wallet) ApproveAndTransferERC20(ctx context.Context, client *Client, to
 	return approveTx, transferTx, nil
 }
 
+// BatchSendETH sends ETH to multiple recipients in a batch.
+// Returns a slice of transactions or an error if any send fails.
 func (w *Wallet) BatchSendETH(ctx context.Context, client *Client, recipients []common.Address, amounts []*big.Int, nm *NonceManager) ([]*types.Transaction, error) {
 
 	if len(recipients) != len(amounts) {
@@ -193,6 +199,8 @@ func (w *Wallet) BatchSendETH(ctx context.Context, client *Client, recipients []
 	return txs, nil
 }
 
+// SafeContractCall safely calls a contract method with ABI encoding.
+// Simulates the call before sending the transaction to the network.
 func (w *Wallet) SafeContractCall(ctx context.Context, client *Client, contract common.Address, abiJSON string, method string, nm *NonceManager, params ...interface{}) (*types.Transaction, error) {
 
 	parsedABI, err := abi.JSON(strings.NewReader(abiJSON))

@@ -53,7 +53,8 @@ type ERC20ApprovalEvent struct {
 	Value   *big.Int
 }
 
-// --- Constructor ---
+// NewERC20 creates an ERC20 contract binding with the given client and address.
+// Parses the provided ABI JSON or uses the minimal default.
 func NewERC20(client *Client, token common.Address, abiJSON string) (*ERC20, error) {
 	if client == nil {
 		return nil, errors.New("client is nil")
@@ -72,7 +73,8 @@ func NewERC20(client *Client, token common.Address, abiJSON string) (*ERC20, err
 	}, nil
 }
 
-// --- Read-only calls ---
+// BalanceOf returns the token balance of the given address.
+// Calls the ERC20 `balanceOf` method as a read-only contract call.
 func (t *ERC20) BalanceOf(ctx context.Context, owner common.Address) (*big.Int, error) {
 	data, _ := t.abi.Pack("balanceOf", owner)
 	msg := ethereum.CallMsg{To: &t.addr, Data: data}
@@ -85,6 +87,8 @@ func (t *ERC20) BalanceOf(ctx context.Context, owner common.Address) (*big.Int, 
 	return balance, err
 }
 
+// Allowance returns the remaining tokens a spender can spend from an owner's account.
+// Calls the ERC20 `allowance` method as a read-only contract call.
 func (t *ERC20) Allowance(ctx context.Context, owner, spender common.Address) (*big.Int, error) {
 	data, _ := t.abi.Pack("allowance", owner, spender)
 	msg := ethereum.CallMsg{To: &t.addr, Data: data}
@@ -97,6 +101,8 @@ func (t *ERC20) Allowance(ctx context.Context, owner, spender common.Address) (*
 	return allowance, err
 }
 
+// Name returns the name of the ERC20 token.
+// Calls the ERC20 `name` method as a read-only contract call.
 func (t *ERC20) Name(ctx context.Context) (string, error) {
 	data, _ := t.abi.Pack("name")
 	msg := ethereum.CallMsg{To: &t.addr, Data: data}
@@ -109,6 +115,8 @@ func (t *ERC20) Name(ctx context.Context) (string, error) {
 	return name, err
 }
 
+// Symbol returns the symbol of the ERC20 token.
+// Calls the ERC20 `symbol` method as a read-only contract call.
 func (t *ERC20) Symbol(ctx context.Context) (string, error) {
 	data, _ := t.abi.Pack("symbol")
 	msg := ethereum.CallMsg{To: &t.addr, Data: data}
@@ -121,6 +129,8 @@ func (t *ERC20) Symbol(ctx context.Context) (string, error) {
 	return symbol, err
 }
 
+// Decimals returns the number of decimals used by the ERC20 token.
+// Calls the ERC20 `decimals` method as a read-only contract call.
 func (t *ERC20) Decimals(ctx context.Context) (uint8, error) {
 	data, _ := t.abi.Pack("decimals")
 	msg := ethereum.CallMsg{To: &t.addr, Data: data}
@@ -133,26 +143,32 @@ func (t *ERC20) Decimals(ctx context.Context) (uint8, error) {
 	return decimals, err
 }
 
-// --- Write transactions ---
+// Transfer sends a transaction to transfer tokens to another address.
+// Calls the ERC20 `transfer` method as a write transaction.
 func (t *ERC20) Transfer(ctx context.Context, wallet *Wallet, to common.Address, amount *big.Int) (*types.Transaction, error) {
 	data, _ := t.abi.Pack("transfer", to, amount)
 	nm := NewNonceManager(t.client, wallet.Address)
 	return wallet.BuildAndSendTx(ctx, t.client, &t.addr, big.NewInt(0), data, nm)
 }
 
+// TransferFrom sends a transaction to transfer tokens from one address to another.
+// Calls the ERC20 `transferFrom` method as a write transaction.
 func (t *ERC20) TransferFrom(ctx context.Context, wallet *Wallet, from common.Address, to common.Address, amount *big.Int) (*types.Transaction, error) {
 	data, _ := t.abi.Pack("transferFrom", from, to, amount)
 	nm := NewNonceManager(t.client, wallet.Address)
 	return wallet.BuildAndSendTx(ctx, t.client, &t.addr, big.NewInt(0), data, nm)
 }
 
+// Approve sends a transaction to approve a spender for a specific amount.
+// Calls the ERC20 `approve` method as a write transaction.
 func (t *ERC20) Approve(ctx context.Context, wallet *Wallet, spender common.Address, amount *big.Int) (*types.Transaction, error) {
 	data, _ := t.abi.Pack("approve", spender, amount)
 	nm := NewNonceManager(t.client, wallet.Address)
 	return wallet.BuildAndSendTx(ctx, t.client, &t.addr, big.NewInt(0), data, nm)
 }
 
-// --- Watchers ---
+// WatchTransfers subscribes to Transfer events and sends them to the provided channel.
+// Requires a WebSocket client; parses logs into ERC20TransferEvent structs.
 func (t *ERC20) WatchTransfers(ctx context.Context, from, to *common.Address, ch chan<- ERC20TransferEvent) error {
 	if !t.client.isWS {
 		return fmt.Errorf("WatchTransfers requires a WS client")
@@ -199,6 +215,8 @@ func (t *ERC20) WatchTransfers(ctx context.Context, from, to *common.Address, ch
 	return nil
 }
 
+// WatchApprovals subscribes to Approval events and sends them to the provided channel.
+// Requires a WebSocket client; parses logs into ERC20ApprovalEvent structs.
 func (t *ERC20) WatchApprovals(ctx context.Context, owner, spender *common.Address, ch chan<- ERC20ApprovalEvent) error {
 	if !t.client.isWS {
 		return fmt.Errorf("WatchApprovals requires a WS client")
@@ -245,7 +263,8 @@ func (t *ERC20) WatchApprovals(ctx context.Context, owner, spender *common.Addre
 	return nil
 }
 
-// --- Log parsers ---//
+// parseTransferLog parses a Transfer event log into an ERC20TransferEvent struct.
+// Returns an error if the log format is invalid.
 func (t *ERC20) parseTransferLog(vLog types.Log) (*ERC20TransferEvent, error) {
 	if len(vLog.Topics) < 3 {
 		return nil, fmt.Errorf("invalid ERC20 Transfer log")
@@ -265,6 +284,8 @@ func (t *ERC20) parseTransferLog(vLog types.Log) (*ERC20TransferEvent, error) {
 	return event, nil
 }
 
+// parseApprovalLog parses an Approval event log into an ERC20ApprovalEvent struct.
+// Returns an error if the log format is invalid.
 func (t *ERC20) parseApprovalLog(vLog types.Log) (*ERC20ApprovalEvent, error) {
 	if len(vLog.Topics) < 3 {
 		return nil, fmt.Errorf("invalid ERC20 Approval log")

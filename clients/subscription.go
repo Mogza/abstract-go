@@ -21,10 +21,14 @@ type SubscriptionManager struct {
 	cancel context.CancelFunc
 }
 
+// NewSubscriptionManager creates a new SubscriptionManager for managing event subscriptions.
+// It holds references to the client, subscriptions, and manages goroutines.
 func NewSubscriptionManager(c *Client) *SubscriptionManager {
 	return &SubscriptionManager{client: c}
 }
 
+// Close cancels all active subscriptions and waits for goroutines to finish.
+// Ensures a clean shutdown of the SubscriptionManager.
 func (m *SubscriptionManager) Close() {
 	if m.cancel != nil {
 		m.cancel()
@@ -35,7 +39,8 @@ func (m *SubscriptionManager) Close() {
 	m.wg.Wait()
 }
 
-// SubscribeNewHeads subscribes to new block as soon as blocked are mined
+// SubscribeNewHeads subscribes to new block headers as soon as blocks are mined.
+// Requires a WebSocket connection; sends headers to the provided channel.
 func (c *Client) SubscribeNewHeads(ctx context.Context, ch chan<- *types.Header) (ethereum.Subscription, error) {
 	if !c.isWS {
 		return nil, fmt.Errorf("SubscribeNewHeads requires a WebSocket connection")
@@ -44,7 +49,8 @@ func (c *Client) SubscribeNewHeads(ctx context.Context, ch chan<- *types.Header)
 	return c.Eth.SubscribeNewHead(ctx, ch)
 }
 
-// SubscribeLogs subscribes to smart contract event logs
+// SubscribeLogs subscribes to smart contract event logs matching the given filter query.
+// Requires a WebSocket connection; sends logs to the provided channel.
 func (c *Client) SubscribeLogs(ctx context.Context, query ethereum.FilterQuery, ch chan<- types.Log) (ethereum.Subscription, error) {
 	if !c.isWS {
 		return nil, fmt.Errorf("SubscribeLogs requires a WebSocket connection")
@@ -52,7 +58,8 @@ func (c *Client) SubscribeLogs(ctx context.Context, query ethereum.FilterQuery, 
 	return c.Eth.SubscribeFilterLogs(ctx, query, ch)
 }
 
-// SubscribePendingTxs subscribes to new transactions entering the mempool
+// SubscribePendingTxs subscribes to new transactions entering the mempool.
+// Requires a WebSocket connection; sends transaction hashes to the provided channel.
 func (c *Client) SubscribePendingTxs(ctx context.Context, ch chan<- common.Hash) (ethereum.Subscription, error) {
 	if !c.isWS {
 		return nil, fmt.Errorf("SubscribePendingTxs requires a WebSocket connection")
@@ -64,7 +71,8 @@ func (c *Client) SubscribePendingTxs(ctx context.Context, ch chan<- common.Hash)
 
 type EventHandler func(vLog types.Log) error
 
-// WatchContractEvent watches any event on a contract with optional indexed filters
+// WatchContractEvent watches for a specific contract event with optional indexed filters.
+// Invokes the handler for each matching log; requires a WebSocket client.
 func (c *Client) WatchContractEvent(ctx context.Context, contractAddr common.Address, abiJSON string, eventName string, filter map[string][]common.Address, handler EventHandler) error {
 	if !c.isWS {
 		return fmt.Errorf("WatchContractEvent requires a WS client")
@@ -132,7 +140,8 @@ func (c *Client) WatchContractEvent(ctx context.Context, contractAddr common.Add
 	return nil
 }
 
-// SubscribeNewHeads helper
+// SubscribeNewHeads subscribes to new block headers and invokes the handler for each.
+// Manages subscription lifecycle and goroutine cleanup.
 func (m *SubscriptionManager) SubscribeNewHeads(handler func(*types.Header)) error {
 	if !m.client.isWS {
 		return fmt.Errorf("SubscribeNewHeads requires a WebSocket connection")
@@ -166,7 +175,8 @@ func (m *SubscriptionManager) SubscribeNewHeads(handler func(*types.Header)) err
 	return nil
 }
 
-// SubscribeLogs helper
+// SubscribeLogs subscribes to contract logs matching the filter and invokes the handler.
+// Manages subscription lifecycle and goroutine cleanup.
 func (m *SubscriptionManager) SubscribeLogs(query ethereum.FilterQuery, handler func(types.Log)) error {
 	if !m.client.isWS {
 		return fmt.Errorf("SubscribeLogs requires a WebSocket connection")
@@ -202,7 +212,8 @@ func (m *SubscriptionManager) SubscribeLogs(query ethereum.FilterQuery, handler 
 
 //  --- SubscriptionManager : Helper ---
 
-// SubscribePendingTxs Helper
+// SubscribePendingTxs subscribes to new pending transactions and invokes the handler for each.
+// Manages subscription lifecycle and goroutine cleanup.
 func (m *SubscriptionManager) SubscribePendingTxs(handler func(common.Hash)) error {
 	if !m.client.isWS {
 		return fmt.Errorf("SubscribePendingTxs requires a WebSocket connection")

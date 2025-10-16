@@ -12,7 +12,8 @@ import (
 	"github.com/tyler-smith/go-bip39"
 )
 
-// NewWallet creates a new random wallet
+// NewWallet creates a new random Ethereum wallet.
+// Returns a Wallet struct with a generated private key and address.
 func NewWallet() (*Wallet, error) {
 	key, err := crypto.GenerateKey()
 	if err != nil {
@@ -24,7 +25,8 @@ func NewWallet() (*Wallet, error) {
 	}, nil
 }
 
-// FromPrivateKey creates wallet from an existing private key
+// FromPrivateKey creates a wallet from an existing hex-encoded private key.
+// Returns a Wallet struct with the provided private key and derived address.
 func FromPrivateKey(hexKey string) (*Wallet, error) {
 	key, err := crypto.HexToECDSA(hexKey)
 	if err != nil {
@@ -36,8 +38,8 @@ func FromPrivateKey(hexKey string) (*Wallet, error) {
 	}, nil
 }
 
-// GenerateMnemonic creates a new BIP39 mnemonic with the given strength (128, 160, 192, 224, 256).
-// Example: strength=128 -> 12 words, 256 -> 24 words.
+// GenerateMnemonic generates a new BIP39 mnemonic phrase with the given strength.
+// Strength determines the number of words (e.g., 128 bits = 12 words).
 func GenerateMnemonic(strength int) (string, error) {
 	entropy, err := bip39.NewEntropy(strength)
 	if err != nil {
@@ -50,8 +52,8 @@ func GenerateMnemonic(strength int) (string, error) {
 	return mnemonic, nil
 }
 
-// NewWalletFromMnemonic derives the first account (m/44'/60'/0'/0/0) from a mnemonic.
-// If passphrase is empty, no extra passphrase is used.
+// NewWalletFromMnemonic derives the first Ethereum account from a BIP39 mnemonic.
+// Uses the standard path m/44'/60'/0'/0/0 and optional passphrase.
 func NewWalletFromMnemonic(mnemonic, passphrase string) (*Wallet, error) {
 	if !bip39.IsMnemonicValid(mnemonic) {
 		return nil, errors.New("invalid mnemonic")
@@ -83,7 +85,8 @@ func NewWalletFromMnemonic(mnemonic, passphrase string) (*Wallet, error) {
 	}, nil
 }
 
-// WalletFromHex creates a Wallet from a hex-encoded private key (no 0x prefix necessary)
+// WalletFromHex creates a Wallet from a hex-encoded private key string.
+// Strips 0x prefix if present and returns the Wallet struct.
 func WalletFromHex(hexKey string) (*Wallet, error) {
 	// strip 0x
 	hexKey = strings.TrimPrefix(hexKey, "0x")
@@ -97,7 +100,8 @@ func WalletFromHex(hexKey string) (*Wallet, error) {
 	}, nil
 }
 
-// PrivateKeyHex returns the hex representation of the wallet private key (without 0x)
+// PrivateKeyHex returns the wallet's private key as a hex string (no 0x prefix).
+// Returns an empty string if the wallet or private key is nil.
 func (w *Wallet) PrivateKeyHex() string {
 	if w == nil || w.PrivateKey == nil {
 		return ""
@@ -105,7 +109,8 @@ func (w *Wallet) PrivateKeyHex() string {
 	return hex.EncodeToString(crypto.FromECDSA(w.PrivateKey))
 }
 
-// ImportKeystoreJSON imports a keystore JSON (go-ethereum format) and returns a Wallet.
+// ImportKeystoreJSON imports a go-ethereum keystore JSON and decrypts it.
+// Returns a Wallet struct with the decrypted private key and address.
 func ImportKeystoreJSON(keyjson []byte, password string) (*Wallet, error) {
 	keyStruct, err := keystore.DecryptKey(keyjson, password)
 	if err != nil {
@@ -117,8 +122,8 @@ func ImportKeystoreJSON(keyjson []byte, password string) (*Wallet, error) {
 	}, nil
 }
 
-// RecoverAddressFromSignature recovers the Ethereum address that produced the signature for the given digest.
-// digest must be the same 32-byte hash that was signed (e.g., EIP-191 prefixed hash or EIP-712 hash).
+// RecoverAddressFromSignature recovers the Ethereum address from a signature and digest.
+// The digest must be the original 32-byte hash that was signed.
 func RecoverAddressFromSignature(digest []byte, sig []byte) (common.Address, error) {
 	var zero common.Address
 	if len(sig) != 65 {
@@ -142,6 +147,7 @@ func RecoverAddressFromSignature(digest []byte, sig []byte) (common.Address, err
 }
 
 // VerifySignature checks that signature was produced by expected address for the given digest.
+// Returns true if the recovered address matches the expected address.
 func VerifySignature(digest []byte, sig []byte, expected common.Address) (bool, error) {
 	addr, err := RecoverAddressFromSignature(digest, sig)
 	if err != nil {

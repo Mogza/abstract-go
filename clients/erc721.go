@@ -51,7 +51,8 @@ type ERC721ApprovalForAllEvent struct {
 	Approved bool
 }
 
-// --- Constructor ---
+// NewERC721 creates an ERC721 contract binding with the given client and address.
+// Parses the provided ABI JSON or uses the minimal default.
 func NewERC721(client *Client, contractAddr common.Address, abiJSON string) (*ERC721, error) {
 	if client == nil {
 		return nil, errors.New("client is nil")
@@ -70,7 +71,8 @@ func NewERC721(client *Client, contractAddr common.Address, abiJSON string) (*ER
 	}, nil
 }
 
-// --- Read-only calls ---
+// BalanceOf returns the number of NFTs owned by the given address.
+// Calls the ERC721 `balanceOf` method as a read-only contract call.
 func (e *ERC721) BalanceOf(ctx context.Context, owner common.Address) (*big.Int, error) {
 	data, _ := e.abi.Pack("balanceOf", owner)
 	res, err := e.client.CallContract(ctx, ethereum.CallMsg{To: &e.addr, Data: data})
@@ -81,6 +83,8 @@ func (e *ERC721) BalanceOf(ctx context.Context, owner common.Address) (*big.Int,
 	return balance, e.abi.UnpackIntoInterface(&balance, "balanceOf", res)
 }
 
+// OwnerOf returns the owner address of the specified token ID.
+// Calls the ERC721 `ownerOf` method as a read-only contract call.
 func (e *ERC721) OwnerOf(ctx context.Context, tokenID *big.Int) (common.Address, error) {
 	data, _ := e.abi.Pack("ownerOf", tokenID)
 	res, err := e.client.CallContract(ctx, ethereum.CallMsg{To: &e.addr, Data: data})
@@ -91,6 +95,8 @@ func (e *ERC721) OwnerOf(ctx context.Context, tokenID *big.Int) (common.Address,
 	return owner, e.abi.UnpackIntoInterface(&owner, "ownerOf", res)
 }
 
+// TokenURI returns the metadata URI for the specified token ID.
+// Calls the ERC721 `tokenURI` method as a read-only contract call.
 func (e *ERC721) TokenURI(ctx context.Context, tokenID *big.Int) (string, error) {
 	data, _ := e.abi.Pack("tokenURI", tokenID)
 	res, err := e.client.CallContract(ctx, ethereum.CallMsg{To: &e.addr, Data: data})
@@ -101,6 +107,8 @@ func (e *ERC721) TokenURI(ctx context.Context, tokenID *big.Int) (string, error)
 	return uri, e.abi.UnpackIntoInterface(&uri, "tokenURI", res)
 }
 
+// GetApproved returns the address approved for the given token ID.
+// Calls the ERC721 `getApproved` method as a read-only contract call.
 func (e *ERC721) GetApproved(ctx context.Context, tokenID *big.Int) (common.Address, error) {
 	data, _ := e.abi.Pack("getApproved", tokenID)
 	res, err := e.client.CallContract(ctx, ethereum.CallMsg{To: &e.addr, Data: data})
@@ -111,6 +119,8 @@ func (e *ERC721) GetApproved(ctx context.Context, tokenID *big.Int) (common.Addr
 	return approved, e.abi.UnpackIntoInterface(&approved, "getApproved", res)
 }
 
+// IsApprovedForAll checks if an operator is approved for all tokens of an owner.
+// Calls the ERC721 `isApprovedForAll` method as a read-only contract call.
 func (e *ERC721) IsApprovedForAll(ctx context.Context, owner, operator common.Address) (bool, error) {
 	data, _ := e.abi.Pack("isApprovedForAll", owner, operator)
 	res, err := e.client.CallContract(ctx, ethereum.CallMsg{To: &e.addr, Data: data})
@@ -121,26 +131,32 @@ func (e *ERC721) IsApprovedForAll(ctx context.Context, owner, operator common.Ad
 	return approved, e.abi.UnpackIntoInterface(&approved, "isApprovedForAll", res)
 }
 
-// --- Write transactions ---
+// TransferFrom sends a transaction to transfer a token from one address to another.
+// Calls the ERC721 `transferFrom` method as a write transaction.
 func (e *ERC721) TransferFrom(ctx context.Context, wallet *Wallet, from, to common.Address, tokenID *big.Int) (*types.Transaction, error) {
 	data, _ := e.abi.Pack("transferFrom", from, to, tokenID)
 	nm := NewNonceManager(e.client, wallet.Address)
 	return wallet.BuildAndSendTx(ctx, e.client, &e.addr, big.NewInt(0), data, nm)
 }
 
+// Approve sends a transaction to approve an address for a specific token ID.
+// Calls the ERC721 `approve` method as a write transaction.
 func (e *ERC721) Approve(ctx context.Context, wallet *Wallet, to common.Address, tokenID *big.Int) (*types.Transaction, error) {
 	data, _ := e.abi.Pack("approve", to, tokenID)
 	nm := NewNonceManager(e.client, wallet.Address)
 	return wallet.BuildAndSendTx(ctx, e.client, &e.addr, big.NewInt(0), data, nm)
 }
 
+// SetApprovalForAll sends a transaction to set or unset operator approval for all tokens.
+// Calls the ERC721 `setApprovalForAll` method as a write transaction.
 func (e *ERC721) SetApprovalForAll(ctx context.Context, wallet *Wallet, operator common.Address, approved bool) (*types.Transaction, error) {
 	data, _ := e.abi.Pack("setApprovalForAll", operator, approved)
 	nm := NewNonceManager(e.client, wallet.Address)
 	return wallet.BuildAndSendTx(ctx, e.client, &e.addr, big.NewInt(0), data, nm)
 }
 
-// --- Watchers ---
+// WatchTransfers subscribes to Transfer events and sends them to the provided channel.
+// Requires a WebSocket client; parses logs into ERC721TransferEvent structs.
 func (e *ERC721) WatchTransfers(ctx context.Context, ch chan<- ERC721TransferEvent) error {
 	if !e.client.isWS {
 		return fmt.Errorf("WatchTransfers requires a WS client")
@@ -174,6 +190,8 @@ func (e *ERC721) WatchTransfers(ctx context.Context, ch chan<- ERC721TransferEve
 	return nil
 }
 
+// WatchApprovals subscribes to Approval events and sends them to the provided channel.
+// Requires a WebSocket client; parses logs into ERC721ApprovalEvent structs.
 func (e *ERC721) WatchApprovals(ctx context.Context, ch chan<- ERC721ApprovalEvent) error {
 	if !e.client.isWS {
 		return fmt.Errorf("WatchApprovals requires a WS client")
@@ -207,6 +225,8 @@ func (e *ERC721) WatchApprovals(ctx context.Context, ch chan<- ERC721ApprovalEve
 	return nil
 }
 
+// WatchApprovalForAll subscribes to ApprovalForAll events and sends them to the provided channel.
+// Requires a WebSocket client; parses logs into ERC721ApprovalForAllEvent structs.
 func (e *ERC721) WatchApprovalForAll(ctx context.Context, ch chan<- ERC721ApprovalForAllEvent) error {
 	if !e.client.isWS {
 		return fmt.Errorf("WatchApprovalForAll requires a WS client")
@@ -241,7 +261,8 @@ func (e *ERC721) WatchApprovalForAll(ctx context.Context, ch chan<- ERC721Approv
 	return nil
 }
 
-// --- Log parsers ---
+// parseERC721TransferLog parses a Transfer event log into an ERC721TransferEvent struct.
+// Returns an error if the log format is invalid.
 func parseERC721TransferLog(vLog types.Log) (*ERC721TransferEvent, error) {
 	if len(vLog.Topics) < 4 {
 		return nil, errors.New("invalid transfer log")
@@ -253,6 +274,8 @@ func parseERC721TransferLog(vLog types.Log) (*ERC721TransferEvent, error) {
 	}, nil
 }
 
+// parseERC721ApprovalLog parses an Approval event log into an ERC721ApprovalEvent struct.
+// Returns an error if the log format is invalid.
 func parseERC721ApprovalLog(vLog types.Log) (*ERC721ApprovalEvent, error) {
 	if len(vLog.Topics) < 4 {
 		return nil, errors.New("invalid approval log")
@@ -264,6 +287,8 @@ func parseERC721ApprovalLog(vLog types.Log) (*ERC721ApprovalEvent, error) {
 	}, nil
 }
 
+// parseERC721ApprovalForAllLog parses an ApprovalForAll event log into an ERC721ApprovalForAllEvent struct.
+// Returns an error if the log format is invalid.
 func parseERC721ApprovalForAllLog(vLog types.Log) (*ERC721ApprovalForAllEvent, error) {
 	if len(vLog.Topics) < 3 {
 		return nil, errors.New("invalid ApprovalForAll log")
