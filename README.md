@@ -5,27 +5,33 @@
 It wraps the standard [go-ethereum](https://github.com/ethereum/go-ethereum) `ethclient`
 and provides Abstract-first naming, helpers, and examples.
 
-## ✨ Features (v0.4)   
+## ✨ Features (v1)   
 ### Wallet & Keys
 - Import/export wallets (private key, mnemonic, keystore JSON)
 - Message signing: EIP-191, EIP-712 typed data
 - Signature recovery & verification
 - Deterministic HD wallets for testing/dev
 
-### Transactions Utilities   
+### Transactions Utilities
+- ApproveAndTransferERC20
+- BatchSendETH
+- SafeContractCall
 - Robust, thread-safe nonce manager
 - Gas estimation helpers (+ buffers, ERC20 & contract calls)
 - Auto-fill transaction builder (BuildAndSendTx) with sane defaults
 
-### "v0.3 and before" Features
-- Connect to an Abstract RPC node
-- Query ETH balances, nonces, gas prices
-- Call contracts & send ETH transactions
-- ERC20 support: balance, transfer, approve, allowance, decimals, symbol, name
-- WebSocket handling (DialWS)
-- Subscriptions: NewHeads, Logs, PendingTxs
-- Multi-Subscription Manager
-- ERC20 Watchers: real-time Transfer & Approval events
+### ERC20 Support
+- balanceOf, transfer, approve, allowance, decimals, symbol, name
+- Watchers: Transfer & Approval events (real-time)
+
+### ERC721 (NFT) Support
+- balanceOf, ownerOf, tokenURI, transferFrom
+- WatchERC721Transfers (real-time)
+- Simple ERC721 client struct mirroring the ERC20 client
+
+### Unified Event Watching
+- WatchContractEvent(contractAddr, abi, eventName, handlerFn)
+- Works with JSON ABI and filters
 
 > Note: This library builds on top of go-ethereum. Most functionality is identical, but the goal of abstract-go is to provide a friendly, Abstract-native developer experience and a future-proof place for Abstract-specific features.
 
@@ -90,7 +96,17 @@ tx, _ = clients.ERC20Approve(ctx, wallet, client, token, recipient, amount)
 fmt.Println("ERC20 Approve Tx Hash:", tx.Hash().Hex())
 ```
 
-5️⃣ Subscribe to New Blocks
+5️⃣ BatchSendETH
+```go
+recipients := []common.Address{common.HexToAddress("0xAddr1"), common.HexToAddress("0xAddr2")}
+amounts := []*big.Int{big.NewInt(10000000000000000), big.NewInt(20000000000000000)}
+txs, _ := wallet.BatchSendETH(ctx, client, recipients, amounts, nm)
+for i, tx := range txs {
+    fmt.Printf("ETH tx %d: %s\n", i, tx.Hash().Hex())
+}
+```
+
+6️⃣ Subscribe to New Blocks
 ```go
 headers := make(chan *types.Header)
 sub, err := client.SubscribeNewHeads(context.Background(), headers)
@@ -119,48 +135,42 @@ See other examples in `examples/`.
 ```bash
 .
 ├── clients
-│   ├── client.go
-│   ├── erc20.go
-│   ├── nonce.go
-│   ├── subscription.go
-│   ├── wallet.go
-│   └── wallet_utils.go
+│   ├── client.go
+│   ├── erc20.go
+│   ├── erc721.go
+│   ├── nonce.go
+│   ├── subscription.go
+│   ├── wallet.go
+│   └── wallet_utils.go
 ├── examples
-│   ├── client.go
-│   ├── erc20.go
-│   ├── erc20Watchers.go
-│   ├── global.go
-│   ├── subLogs.go
-│   ├── subManager.go
-│   ├── subNewHeads.go
-│   ├── subPendingTxs.go
-│   ├── transfer.go
-│   ├── wallet_deterministic.go
-│   ├── wallet.go
-│   ├── wallet_keystore.go
-│   ├── wallet_mnemonic.go
-│   ├── wallet_sign.go
-│   └── wallet_verify.go
+│   ├── client.go
+│   ├── erc20.go
+│   ├── erc20Watchers.go
+│   ├── erc721.go
+│   ├── global.go
+│   ├── subLogs.go
+│   ├── subManager.go
+│   ├── subNewHeads.go
+│   ├── subPendingTxs.go
+│   ├── transfer.go
+│   ├── wallet_deterministic.go
+│   ├── wallet.go
+│   ├── wallet_keystore.go
+│   ├── wallet_mnemonic.go
+│   ├── wallet_sign.go
+│   └── wallet_verify.go
 ├── go.mod
 ├── go.sum
 ├── LICENSE
 └── README.md
 
+
 ```
 
 ## 🔮 Roadmap   
-Upcoming :    
-ERC721 (NFT) Support
-- ownerOf, tokenURI, transferFrom.
-- WatchERC721Transfers.
-
-Unified Event Watching
-- A generic WatchContractEvent helper.
-- Developers can pass any ABI + event name.
-
-Retry & Resilience
-- Polling with retry/backoff if RPC fails.
-- Detect reorgs (replay logs if chain reverts).
+- Retry & Resilience: polling with retry/backoff, detect reorgs
+- More ERC721 helpers & events
+- Additional Abstract-specific utilities
 
   
 ## 🤝 Contributing    
